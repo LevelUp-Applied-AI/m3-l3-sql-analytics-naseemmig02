@@ -207,3 +207,69 @@ FROM employees e
 JOIN employee_certifications ec ON e.employee_id = ec.employee_id
 JOIN certifications c           ON ec.certification_id = c.certification_id
 ORDER BY e.last_name, ec.certification_date;
+
+
+-- Challenge Tier 1: At-Risk Projects
+SELECT
+    p.name AS project_name,
+    p.budget AS available_hours_budget,
+    COALESCE(SUM(pa.hours_allocated), 0) AS total_hours_allocated,
+    ROUND(p.budget * 0.8, 2) AS eighty_percent_threshold,
+    ROUND(COALESCE(SUM(pa.hours_allocated), 0) / p.budget * 100, 2) AS pct_budget_used
+FROM projects p
+LEFT JOIN project_assignments pa ON p.project_id = pa.project_id
+GROUP BY p.project_id, p.name, p.budget
+HAVING COALESCE(SUM(pa.hours_allocated), 0) > p.budget * 0.8
+ORDER BY pct_budget_used DESC;
+
+
+-- Challenge 2: Cross-Department Analysis
+-- Employees assigned to projects where the majority of team members
+-- come from a different department than their own.
+
+WITH project_home_dept AS (
+    SELECT
+        pa.project_id,
+        e.department_id,
+        COUNT(*) AS member_count,
+        RANK() OVER (PARTITION BY pa.project_id ORDER BY COUNT(*) DESC) AS rn
+    FROM project_assignments pa
+    JOIN employees e ON pa.employee_id = e.employee_id
+    GROUP BY pa.project_id, e.department_id
+)
+SELECT
+    e.first_name,
+    e.last_name,
+    ed.name  AS employee_department,
+    p.name   AS project_name,
+    hd.name  AS project_home_department,
+    pa.role
+FROM employees e
+JOIN departments ed         ON e.department_id = ed.department_id
+JOIN project_assignments pa ON e.employee_id = pa.employee_id
+JOIN projects p             ON pa.project_id = p.project_id
+JOIN project_home_dept phd  ON p.project_id = phd.project_id AND phd.rn = 1
+JOIN departments hd         ON phd.department_id = hd.department_id
+WHERE e.department_id != phd.department_id
+ORDER BY p.name, e.last_name;
+
+
+-- ============================================================
+-- CHALLENGE EXTENSIONS — Tier 3
+-- ============================================================
+
+-- Tier 3, Part 1: salary_history table DDL + seed data
+
+CREATE TABLE IF NOT EXISTS salary_history (
+    history_id      SERIAL PRIMARY KEY,
+    employee_id     INTEGER NOT NULL REFERENCES employees(employee_id),
+    salary          NUMERIC(10,2) NOT NULL CHECK (salary > 0),
+    effective_date  DATE NOT NULL,
+    change_reason   VARCHAR(100)
+);
+
+-- Tier 3, Part 2: Migration script — one initial record per employee
+
+INSERT INTO salary_history (employee_id, salary, effective_date, change_reason)
+SELECT employee_id, salary, hire_date, 'Initial salary at hire'
+FROM employees;

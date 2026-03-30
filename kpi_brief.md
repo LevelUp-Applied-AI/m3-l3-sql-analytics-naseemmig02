@@ -50,3 +50,33 @@
 **Current value:** 60 hires ÷ 36 months = **~1.7 hires per month on average**.
 
 **Interpretation:** Hiring has been steady since 2022 with a peak of 4 hires in January 2022, and the most recent months (Jan–Feb 2025) show continued activity, suggesting the company is in a stable growth phase.
+
+
+
+
+---
+
+## Tier 3 — Production Migration Analysis
+
+### How would you handle this migration in production with live data?
+
+The safest approach is a **zero-downtime migration** using these steps:
+
+1. **Create the new table first** — `salary_history` can be added without touching existing tables, so there is no risk to live data at this stage.
+2. **Backfill in batches** — instead of one large `INSERT ... SELECT`, run the migration in batches (e.g., 500 employees at a time) to avoid locking the database or causing performance spikes during business hours.
+3. **Run in a transaction** — wrap the migration in a transaction so if anything fails midway, it rolls back cleanly with no partial data.
+4. **Deploy during low-traffic hours** — schedule the migration for off-peak hours (e.g., late night) to minimize impact on users.
+5. **Verify before going live** — after backfilling, run a `COUNT(*)` check to confirm every employee has at least one record before switching application code to use the new table.
+
+### What are the risks of adding a new table and backfilling?
+
+| Risk | Explanation |
+|------|-------------|
+| **Data inconsistency** | If employees receive salary updates while the backfill is running, some records may capture stale salary values |
+| **Lock contention** | A large INSERT can lock tables and slow down or block other queries running at the same time |
+| **Partial migration failure** | If the script crashes midway without a transaction, you end up with incomplete data that's hard to detect |
+| **Application breakage** | If application code is deployed expecting `salary_history` to exist before the migration runs, queries will fail |
+| **Storage growth** | Salary history will grow continuously over time — indexes and storage costs need to be planned for upfront |
+
+### Mitigation strategy
+Use a **feature flag** to control when the application starts writing to `salary_history`. This way the table can exist and be backfilled safely before any live writes depend on it.
